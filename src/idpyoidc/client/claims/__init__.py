@@ -16,10 +16,14 @@ class Claims(claims.Claims):
     def get_base_url(self, configuration: dict, entity_id: Optional[str] = ""):
         _base = configuration.get("base_url")
         if not _base:
+<<<<<<< HEAD
             if entity_id:
                 _base = entity_id
             else:
                 _base = configuration.get("client_id")
+=======
+            _base = configuration.get("client_id", configuration.get("entity_id"))
+>>>>>>> c3455f3... To make it more robust
 
         return _base
 
