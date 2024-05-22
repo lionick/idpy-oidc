@@ -17,6 +17,7 @@ class Claims(claims.Claims):
         _base = configuration.get("base_url")
         if not _base:
 <<<<<<< HEAD
+<<<<<<< HEAD
             if entity_id:
                 _base = entity_id
             else:
@@ -24,6 +25,9 @@ class Claims(claims.Claims):
 =======
             _base = configuration.get("client_id", configuration.get("entity_id"))
 >>>>>>> c3455f3... To make it more robust
+=======
+            _base = configuration.get("client_id", configuration.get("entity_id"))
+>>>>>>> f651f171a8c08ea26b47719efe650262f07e289d
 
         return _base
 
