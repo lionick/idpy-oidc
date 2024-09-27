@@ -128,7 +128,7 @@ class Introspection(Endpoint):
             if request["client_id"] not in aud:
                 return {"response_args": _resp}
 
-        _info = self._introspect(_token, _session_info["client_id"], _session_info["grant"])
+        _info = self._introspect(_token, _session_info["client_id"], grant)
         if _info is None:
             return {"response_args": _resp}
 
@@ -141,6 +141,10 @@ class Introspection(Endpoint):
 
         _resp.update(_info)
         _resp.weed()
+
+        _custom_attributes = grant.claims.get("custom_attributes")
+        if _custom_attributes:
+            _resp.update(_custom_attributes)
 
         _claims_restriction = _context.claims_interface.get_claims(
             _session_info["branch_id"], scopes=_token.scope, claims_release_point="introspection"
