@@ -14,6 +14,7 @@ from idpyoidc.server.exception import ConfigurationError
 from idpyoidc.server.session.grant_manager import GrantManager
 from idpyoidc.util import rndstr
 
+from ..exception import InvalidBranchID
 from ..token import UnknownToken
 from ..token import WrongTokenClass
 from ..token import handler
@@ -469,8 +470,13 @@ class SessionManager(GrantManager):
         :param authorization_request: Whether the authorization_request should part of the response
         :return: A dictionary with session information
         """
-        res = self.branch_info(session_id)
-
+        try:
+            res = self.branch_info(session_id)
+        except InvalidBranchID as e:
+            # Log the exception if needed
+            logging.error(f"InvalidBranchID error: {str(e)}")
+            raise
+          
         if authentication_event:
             res["authentication_event"] = res["grant"].authentication_event
 
