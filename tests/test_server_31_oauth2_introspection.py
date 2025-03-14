@@ -338,7 +338,6 @@ class TestEndpoint:
             "exp",
             "iat",
             "scope",
-            "aud",
             "token_type",
         }
         assert _payload["active"] is True
