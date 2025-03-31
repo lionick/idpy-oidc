@@ -9,7 +9,7 @@ from idpyoidc.client.oidc import IDT2REG
 from idpyoidc.message import Message
 from idpyoidc.message import oidc
 from idpyoidc.message.oidc import verified_claim_name
-from idpyoidc.metadata import get_signing_algs
+from idpyoidc.alg_info import get_signing_algs
 from idpyoidc.time_util import time_sans_frac
 
 __author__ = "Roland Hedberg"
@@ -42,10 +42,14 @@ class AccessToken(access_token.AccessToken):
         :return: dictionary with arguments to the verify call
         """
         _context = self.upstream_get("context")
-        _entity = self.upstream_get("entity")
+        _entity = self.upstream_get("unit")
+
+        _client_id = _entity.get_client_id()
+        if not _client_id:
+            _client_id = _context.get_client_id()
 
         kwargs = {
-            "client_id": _entity.get_client_id(),
+            "client_id": _client_id,
             "iss": _context.issuer,
             "keyjar": self.upstream_get("attribute", "keyjar"),
             "verify": True,

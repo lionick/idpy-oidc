@@ -51,10 +51,10 @@ REQUEST2REGISTER = {
 
 
 def supported_to_preferred(
-    supported: dict,
-    preference: dict,
-    base_url: str,
-    info: Optional[dict] = None,
+        supported: dict,
+        preference: dict,
+        base_url: str,
+        info: Optional[dict] = None,
 ):
     if info:  # The provider info
         for key, val in supported.items():
@@ -62,11 +62,16 @@ def supported_to_preferred(
                 _pref_val = preference.get(key)  # defined in configuration
                 _info_val = info.get(key)
                 if _info_val:
-                    # Only use provider setting if less or equal to what I support
-                    if key.endswith("supported"):  # list
-                        preference[key] = [x for x in _pref_val if x in _info_val]
+                    if isinstance(_info_val, bool):
+                        if _info_val is False and _pref_val is True:
+                            # Turn off support if server doesn't support
+                            preference[key] = _info_val
                     else:
-                        pass
+                        # Only use provider setting if less or equal to what I support
+                        if key.endswith("supported"):  # list
+                            preference[key] = [x for x in _pref_val if x in _info_val]
+                        else:
+                            pass
             elif val is None:  # No default, means the RP does not have a preference
                 # if key not in ['jwks_uri', 'jwks']:
                 pass
@@ -78,7 +83,7 @@ def supported_to_preferred(
                         preference[key] = [x for x in val if x in _info_val]
                     else:
                         pass
-                else:
+                elif val:
                     preference[key] = val
 
         # special case -> must have a request_uris value
@@ -143,7 +148,7 @@ def _intersection(a, b):
 
 
 def preferred_to_registered(
-    prefers: dict, supported: dict, registration_response: Optional[dict] = None
+        prefers: dict, supported: dict, registration_response: Optional[dict] = None
 ):
     """
     The claims with values that are returned from the OP is what goes unless (!!)
@@ -195,7 +200,7 @@ def preferred_to_registered(
             # be a singleton or an array. So just add it as is.
             registered[_reg_key] = val
 
-    logger.debug(f"Entity registered: {registered}")
+    logger.debug(f"preferred2registered: {registered}")
     return registered
 
 
@@ -214,4 +219,10 @@ def create_registration_request(prefers: dict, supported: dict) -> dict:
             continue
 
         _request[key] = array_or_singleton(spec, value)
+
+    for key, val in prefers.items():
+        if key not in RegistrationRequest.c_param.keys():
+            if key not in REGISTER2PREFERRED.values():
+                _request[key] = val
+
     return _request

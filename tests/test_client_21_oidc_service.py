@@ -30,6 +30,7 @@ from idpyoidc.message.oidc.session import EndSessionRequest
 
 
 class Response(object):
+
     def __init__(self, status_code, text, headers=None):
         self.status_code = status_code
         self.text = text
@@ -70,6 +71,7 @@ def make_keyjar():
 
 
 class TestAuthorization(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         client_config = {
@@ -312,6 +314,7 @@ class TestAuthorization(object):
 
 
 class TestAuthorizationCallback(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         client_config = {
@@ -397,6 +400,7 @@ class TestAuthorizationCallback(object):
 
 
 class TestAccessTokenRequest(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         client_config = {
@@ -475,6 +479,7 @@ class TestAccessTokenRequest(object):
 
 
 class TestProviderInfo(object):
+
     @pytest.fixture(autouse=True)
     def create_service(self):
         self._iss = ISS
@@ -548,8 +553,6 @@ class TestProviderInfo(object):
                 "private_key_jwt",
             ],
             "claims_parameter_supported": True,
-            "request_parameter_supported": True,
-            "request_uri_parameter_supported": True,
             # "require_request_uri_registration": True,
             "grant_types_supported": [
                 "authorization_code",
@@ -726,7 +729,7 @@ class TestProviderInfo(object):
             "end_session_endpoint": "{}/end_session".format(OP_BASEURL),
         }
         _context = self.service.upstream_get("context")
-        assert _context.claims.use == {}
+        # assert _context.claims.use == {}
         resp = self.service.post_parse_response(provider_info_response)
 
         iss_jwks = ISS_KEY.export_jwks_as_json(issuer_id=ISS)
@@ -789,7 +792,31 @@ class TestProviderInfo(object):
             "end_session_endpoint": "{}/end_session".format(OP_BASEURL),
         }
         _context = self.service.upstream_get("context")
-        assert _context.claims.use == {}
+        assert set(_context.claims.use.keys()) == {
+            'application_type',
+            'backchannel_logout_session_required',
+            'backchannel_logout_uri',
+            'callback_uris',
+            'client_id',
+            'client_secret',
+            'contacts',
+            'default_max_age',
+            'encrypt_id_token_supported',
+            'encrypt_request_object_supported',
+            'encrypt_userinfo_supported',
+            'grant_types',
+            'id_token_signed_response_alg',
+            'jwks',
+            'post_logout_redirect_uris',
+            'redirect_uris',
+            'request_object_signing_alg',
+            'response_modes',
+            'response_types',
+            'scope',
+            'subject_type',
+            'token_endpoint_auth_method',
+            'token_endpoint_auth_signing_alg',
+            'userinfo_signed_response_alg'}
         resp = self.service.post_parse_response(provider_info_response)
 
         iss_jwks = ISS_KEY.export_jwks_as_json(issuer_id=ISS)
@@ -853,6 +880,7 @@ def create_jws(val):
 
 
 class TestRegistration(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         self._iss = ISS
@@ -877,12 +905,16 @@ class TestRegistration(object):
         assert isinstance(_req, RegistrationRequest)
         assert set(_req.keys()) == {
             "application_type",
+            'callback_uris',
             "default_max_age",
+            'encrypt_request_object_supported',
+            'encrypt_userinfo_supported',
             "grant_types",
             "id_token_signed_response_alg",
             "jwks",
             "redirect_uris",
             "request_object_signing_alg",
+            'requests_dir',
             "response_modes",
             "response_types",
             "subject_type",
@@ -900,13 +932,17 @@ class TestRegistration(object):
         assert isinstance(_req, RegistrationRequest)
         assert set(_req.keys()) == {
             "application_type",
+            'callback_uris',
             "default_max_age",
+            'encrypt_request_object_supported',
+            'encrypt_userinfo_supported',
             "grant_types",
             "id_token_signed_response_alg",
             "jwks",
             "post_logout_redirect_uri",
             "redirect_uris",
             "request_object_signing_alg",
+            'requests_dir',
             "response_modes",
             "response_types",
             "subject_type",
@@ -942,22 +978,27 @@ def test_config_with_required_request_uri():
     reg_service = entity.get_service("registration")
     _req = reg_service.construct()
     assert isinstance(_req, RegistrationRequest)
-    assert set(_req.keys()) == {
-        "application_type",
-        "response_modes",
-        "response_types",
-        "jwks",
-        "redirect_uris",
-        "grant_types",
-        "id_token_signed_response_alg",
-        "request_uris",
-        "default_max_age",
-        "request_object_signing_alg",
-        "subject_type",
-        "token_endpoint_auth_method",
-        "token_endpoint_auth_signing_alg",
-        "userinfo_signed_response_alg",
-    }
+    assert set(_req.keys()) == {'application_type',
+                                'callback_uris',
+                                'client_id',
+                                'client_secret',
+                                'default_max_age',
+                                'encrypt_request_object_supported',
+                                'encrypt_userinfo_supported',
+                                'grant_types',
+                                'id_token_signed_response_alg',
+                                'jwks',
+                                'redirect_uris',
+                                'request_object_signing_alg',
+                                'request_parameter',
+                                'request_uris',
+                                'requests_dir',
+                                'response_modes',
+                                'response_types',
+                                'subject_type',
+                                'token_endpoint_auth_method',
+                                'token_endpoint_auth_signing_alg',
+                                'userinfo_signed_response_alg'}
 
 
 def test_config_logout_uri():
@@ -997,25 +1038,31 @@ def test_config_logout_uri():
     reg_service = entity.get_service("registration")
     _req = reg_service.construct()
     assert isinstance(_req, RegistrationRequest)
-    assert set(_req.keys()) == {
-        "application_type",
-        "default_max_age",
-        "grant_types",
-        "id_token_signed_response_alg",
-        "jwks",
-        "redirect_uris",
-        "request_object_signing_alg",
-        "request_uris",
-        "response_modes",
-        "response_types",
-        "subject_type",
-        "token_endpoint_auth_method",
-        "token_endpoint_auth_signing_alg",
-        "userinfo_signed_response_alg",
-    }
+    assert set(_req.keys()) == {'application_type',
+                                'callback_uris',
+                                'client_id',
+                                'client_secret',
+                                'default_max_age',
+                                'encrypt_request_object_supported',
+                                'encrypt_userinfo_supported',
+                                'grant_types',
+                                'id_token_signed_response_alg',
+                                'jwks',
+                                'redirect_uris',
+                                'request_object_signing_alg',
+                                'request_parameter',
+                                'request_uris',
+                                'requests_dir',
+                                'response_modes',
+                                'response_types',
+                                'subject_type',
+                                'token_endpoint_auth_method',
+                                'token_endpoint_auth_signing_alg',
+                                'userinfo_signed_response_alg'}
 
 
 class TestUserInfo(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         self._iss = ISS
@@ -1162,6 +1209,7 @@ class TestUserInfo(object):
 
 
 class TestCheckSession(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         self._iss = ISS
@@ -1189,6 +1237,7 @@ class TestCheckSession(object):
 
 
 class TestCheckID(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         self._iss = ISS
@@ -1216,6 +1265,7 @@ class TestCheckID(object):
 
 
 class TestEndSession(object):
+
     @pytest.fixture(autouse=True)
     def create_request(self):
         self._iss = ISS

@@ -238,7 +238,7 @@ class Endpoint(Node):
             if _auth_method and _auth_method not in ["public", "none"]:
                 req["authenticated"] = True
         else:
-            _client_id = req.get("client_id")
+            _client_id = req.get("client_id", None)
 
         LOGGER.debug(f"parse_request:auth_info:{auth_info}")
 
