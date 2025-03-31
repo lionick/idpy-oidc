@@ -235,6 +235,7 @@ class TestEndpoint(object):
         payload = _jwt.jwt.payload()
         assert set(payload.keys()) == {
             "aud",
+            "client_id",
             "sub",
             "auth_time",
             "nonce",
@@ -244,7 +245,6 @@ class TestEndpoint(object):
             "email_verified",
             "jti",
             "scope",
-            "client_id",
             "iss",
             "sid",
         }
@@ -286,6 +286,7 @@ class TestEndpoint(object):
 
         assert set(payload.keys()) == {
             "aud",
+            "client_id",
             "sub",
             "auth_time",
             "nonce",
@@ -295,7 +296,6 @@ class TestEndpoint(object):
             "email_verified",
             "jti",
             "scope",
-            "client_id",
             "iss",
             "sid",
         }        
@@ -312,6 +312,7 @@ class TestEndpoint(object):
         payload = _jwt.jwt.payload()
         assert set(payload.keys()) == {
             "sub",
+            "client_id",
             "auth_time",
             "aud",
             "exp",
@@ -319,7 +320,6 @@ class TestEndpoint(object):
             "email_verified",
             "jti",
             "scope",
-            "client_id",
             "c_hash",
             "iss",
             "iat",
@@ -333,6 +333,9 @@ class TestEndpoint(object):
         code = self._mint_code(grant, session_id)
         access_token = self._mint_access_token(grant, session_id, code)
 
+        # reset code usage
+        code.used = 0
+
         id_token = self._mint_id_token(
             grant, session_id, token_ref=code, access_token=access_token.value
         )
@@ -343,6 +346,7 @@ class TestEndpoint(object):
 
         assert set(payload.keys()) == {
             "sub",
+            "client_id",
             "auth_time",
             "aud",
             "exp",
@@ -350,7 +354,6 @@ class TestEndpoint(object):
             "email_verified",
             "jti",
             "scope",
-            "client_id",
             "iss",
             "iat",
             "nonce",
@@ -364,6 +367,9 @@ class TestEndpoint(object):
         code = self._mint_code(grant, session_id)
         access_token = self._mint_access_token(grant, session_id, code)
 
+        # reset code usage
+        code.used = 0
+
         id_token = self._mint_id_token(
             grant,
             session_id,
@@ -376,6 +382,7 @@ class TestEndpoint(object):
         payload = _jwt.jwt.payload()
         assert set(payload.keys()) == {
             "sub",
+            "client_id",
             "auth_time",
             "aud",
             "exp",
@@ -383,7 +390,6 @@ class TestEndpoint(object):
             "email_verified",
             "jti",
             "scope",
-            "client_id",
             "iss",
             "iat",
             "nonce",
@@ -404,13 +410,13 @@ class TestEndpoint(object):
         payload = _jwt.jwt.payload()
         assert set(payload.keys()) == {
             "nonce",
+            "client_id",
             "iat",
             "iss",
             "email",
             "email_verified",
             "jti",
             "scope",
-            "client_id",
             "given_name",
             "aud",
             "exp",
@@ -427,6 +433,8 @@ class TestEndpoint(object):
         code = self._mint_code(grant, session_id)
         access_token = self._mint_access_token(grant, session_id, code)
 
+        # reset code usage
+        code.used = 0
         id_token = self._mint_id_token(
             grant,
             session_id,
@@ -439,13 +447,13 @@ class TestEndpoint(object):
         payload = _jwt.jwt.payload()
         assert set(payload.keys()) == {
             "nonce",
+            "client_id",
             "c_hash",
             "at_hash",
             "email",
             "email_verified",
             "jti",
             "scope",
-            "client_id",
             "sub",
             "auth_time",
             "given_name",
@@ -681,6 +689,8 @@ class TestEndpoint(object):
         code = self._mint_code(grant, session_id)
         access_token = self._mint_access_token(grant, session_id, code)
 
+        # reset code usage
+        code.used = 0
         id_token = self._mint_id_token(
             grant, session_id, token_ref=code, access_token=access_token.value
         )
@@ -713,6 +723,8 @@ class TestEndpoint(object):
         code = self._mint_code(grant, session_id)
         access_token = self._mint_access_token(grant, session_id, code)
 
+        # reset code usage
+        code.used = 0
         id_token = self._mint_id_token(
             grant, session_id, token_ref=code, access_token=access_token.value
         )
@@ -730,6 +742,8 @@ class TestEndpoint(object):
         code = self._mint_code(grant, session_id)
         access_token = self._mint_access_token(grant, session_id, code)
 
+        # reset code usage
+        code.used = 0
         id_token = self._mint_id_token(
             grant, session_id, token_ref=code, access_token=access_token.value
         )

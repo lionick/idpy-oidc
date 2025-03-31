@@ -8,23 +8,18 @@ from typing import Optional
 from typing import Union
 from urllib.parse import urlparse
 
-from cryptojwt.exception import IssuerNotFound
 from cryptojwt.jwe.jwe import factory as jwe_factory
 from cryptojwt.jws.jws import factory as jws_factory
 from cryptojwt.jwt import JWT
-from idpyoidc.exception import MissingSigningKey
 
 from idpyoidc.client.exception import Unsupported
+from idpyoidc.exception import MissingSigningKey
 from idpyoidc.impexp import ImpExp
 from idpyoidc.item import DLDict
 from idpyoidc.message import Message
-from idpyoidc.message.oauth2 import ResponseMessage
 from idpyoidc.message.oauth2 import is_error_message
+from idpyoidc.message.oauth2 import ResponseMessage
 from idpyoidc.util import importer
-
-from ..constant import JOSE_ENCODED
-from ..constant import JSON_ENCODED
-from ..constant import URL_ENCODED
 from .client_auth import client_auth_setup
 from .client_auth import method_to_item
 from .client_auth import single_authn_setup
@@ -32,6 +27,9 @@ from .configure import Configuration
 from .exception import ResponseError
 from .util import get_http_body
 from .util import get_http_url
+from ..constant import JOSE_ENCODED
+from ..constant import JSON_ENCODED
+from ..constant import URL_ENCODED
 
 __author__ = "Roland Hedberg"
 
@@ -79,7 +77,7 @@ class Service(ImpExp):
     _callback_path = {}
 
     def __init__(
-        self, upstream_get: Callable, conf: Optional[Union[dict, Configuration]] = None, **kwargs
+            self, upstream_get: Callable, conf: Optional[Union[dict, Configuration]] = None, **kwargs
     ):
         ImpExp.__init__(self)
 
@@ -264,9 +262,16 @@ class Service(ImpExp):
         _args = self.gather_request_args(**request_args)
 
         # logger.debug("kwargs: %s" % sanitize(kwargs))
+
+        # we must check if claims module is idpyoidc.client.claims.oauth2recource as
+        # in that case we don't want to set_defaults like application_type etc.
+        obj = self.upstream_get("context").claims
         # initiate the request as in an instance of the self.msg_type
         # message type
-        request = self.msg_type(**_args)
+        if(obj.__class__.__module__ == "idpyoidc.client.claims.oauth2resource"):
+            request = self.msg_type(**_args, set_defaults=False)
+        else:
+            request = self.msg_type(**_args)
 
         _behaviour_args = kwargs.get("behaviour_args")
         if _behaviour_args:
@@ -333,7 +338,7 @@ class Service(ImpExp):
         return self.upstream_get("context").provider_info[self.endpoint_name]
 
     def get_authn_header(
-        self, request: Union[dict, Message], authn_method: Optional[str] = "", **kwargs
+            self, request: Union[dict, Message], authn_method: Optional[str] = "", **kwargs
     ) -> dict:
         """
         Construct an authorization specification to be sent in the
@@ -364,12 +369,15 @@ class Service(ImpExp):
         """
         return self.default_authn_method
 
+    def get_headers_args(self):
+        return {}
+
     def get_headers(
-        self,
-        request: Union[dict, Message],
-        http_method: str,
-        authn_method: Optional[str] = "",
-        **kwargs,
+            self,
+            request: Union[dict, Message],
+            http_method: str,
+            authn_method: Optional[str] = "",
+            **kwargs,
     ) -> dict:
         """
 
@@ -404,7 +412,7 @@ class Service(ImpExp):
         return _headers
 
     def get_request_parameters(
-        self, request_args=None, method="", request_body_type="", authn_method="", **kwargs
+            self, request_args=None, method="", request_body_type="", authn_method="", **kwargs
     ) -> dict:
         """
         Builds the request message and constructs the HTTP headers.
@@ -443,15 +451,18 @@ class Service(ImpExp):
         if _context.issuer:
             _args["iss"] = _context.issuer
 
-        # Client authentication by usage of the Authorization HTTP header
-        # or by modifying the request object
-        _headers = self.get_headers(request, http_method=method, authn_method=authn_method, **_args)
-
         # Find out where to send this request
         try:
             endpoint_url = kwargs["endpoint"]
         except KeyError:
             endpoint_url = self.get_endpoint()
+
+        _args["endpoint_url"] = endpoint_url
+
+        # Client authentication by usage of the Authorization HTTP header
+        # or by modifying the request object
+        _args.update(self.get_headers_args())
+        _headers = self.get_headers(request, http_method=method, authn_method=authn_method, **_args)
 
         _info["url"] = get_http_url(endpoint_url, request, method=method)
 
@@ -506,7 +517,7 @@ class Service(ImpExp):
         return response
 
     def gather_verify_arguments(
-        self, response: Optional[Union[dict, Message]] = None, behaviour_args: Optional[dict] = None
+            self, response: Optional[Union[dict, Message]] = None, behaviour_args: Optional[dict] = None
     ):
         """
         Need to add some information before running verify()
@@ -542,7 +553,7 @@ class Service(ImpExp):
     def _do_response(self, info, sformat, **kwargs):
         _context = self.upstream_get("context")
 
-        if isinstance(info,  list): # Don't have support for sformat=list
+        if isinstance(info, list):  # Don't have support for sformat=list
             return info
 
         try:
@@ -566,13 +577,13 @@ class Service(ImpExp):
         return resp
 
     def parse_response(
-        self,
-        info,
-        sformat: Optional[str] = "",
-        state: Optional[str] = "",
-        behaviour_args: Optional[dict] = None,
-        **kwargs,
-    ) :
+            self,
+            info,
+            sformat: Optional[str] = "",
+            state: Optional[str] = "",
+            behaviour_args: Optional[dict] = None,
+            **kwargs,
+    ):
         """
         This the start of a pipeline that will:
 
@@ -707,12 +718,12 @@ class Service(ImpExp):
         return f"{base_url}/{path}/{hex}"
 
     def construct_uris(
-        self,
-        base_url: str,
-        hex: bytes,
-        context: OidcContext,
-        targets: Optional[List[str]] = None,
-        response_types: Optional[list] = None,
+            self,
+            base_url: str,
+            hex: bytes,
+            context: OidcContext,
+            targets: Optional[List[str]] = None,
+            response_types: Optional[list] = None,
     ):
         if not targets:
             targets = self._callback_path.keys()

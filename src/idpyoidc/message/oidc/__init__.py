@@ -780,7 +780,7 @@ class IdToken(OpenIDSchema):
 
         try:
             if kwargs["iss"] != self["iss"]:
-                raise IssuerMismatch("{} != {}".format(kwargs["iss"], self["iss"]))
+                raise IssuerMismatch("{kwargs['iss']} != {self['iss']}")
         except KeyError:
             pass
 
@@ -788,7 +788,7 @@ class IdToken(OpenIDSchema):
             if "client_id" in kwargs:
                 # check that I'm among the recipients
                 if kwargs["client_id"] not in self["aud"]:
-                    raise NotForMe('"{}" not in {}'.format(kwargs["client_id"], self["aud"]), self)
+                    raise NotForMe(f'{kwargs["client_id"]} not in {self["aud"]}')
 
             # Then azp has to be present and be one of the aud values
             if len(self["aud"]) > 1:
@@ -915,8 +915,8 @@ class ProviderConfigurationResponse(ResponseMessage):
         "token_endpoint_auth_methods_supported": ["client_secret_basic"],
         "claims_parameter_supported": False,
         "request_parameter_supported": False,
-        "request_uri_parameter_supported": True,
-        "require_request_uri_registration": True,
+        "request_uri_parameter_supported": None,
+        "require_request_uri_registration": None,
         "grant_types_supported": ["authorization_code"],
     }
 
@@ -945,8 +945,14 @@ class ProviderConfigurationResponse(ResponseMessage):
                 "token_endpoint_auth_signing_alg_values_supported"
             )
 
-        if "RS256" not in self["id_token_signing_alg_values_supported"]:
-            raise ValueError("RS256 missing from id_token_signing_alg_values_supported")
+        # Check that any alg that is not "none" is supported.
+        # While OpenID Connect Core 1.0 says RS256 MUST be supported,
+        # reality has moved on and more modern alg values may be required.
+        if not any(i.lower() != "none" for i in self["id_token_signing_alg_values_supported"]):
+            raise ValueError(
+                "Secure signing algorithm (for example RS256 or ES256) missing from id_token_signing_alg_values_supported: %s"
+                % self["id_token_signing_alg_values_supported"]
+            )
 
         if not parts.query and not parts.fragment:
             pass

@@ -30,8 +30,8 @@ class Database(ImpExp):
         ImpExp.__init__(self)
         self.db = DLDict()
 
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+        # for k, v in kwargs.items():
+        #     setattr(self, k, v)
 
         if crypt_config is None:
             crypt_config = default_crypt_config()
@@ -50,7 +50,7 @@ class Database(ImpExp):
         return DIVIDER.join(args)
 
     @staticmethod
-    def unpack_branch_key(key):
+    def unpack_branch_key(key: str) -> list:
         """Translate a key into an ordered list of names"""
         return key.split(DIVIDER)
 

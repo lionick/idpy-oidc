@@ -4,9 +4,9 @@ from typing import List
 from typing import Optional
 from typing import TypeVar
 from typing import Union
+from urllib.parse import parse_qs
 from urllib.parse import ParseResult
 from urllib.parse import SplitResult
-from urllib.parse import parse_qs
 from urllib.parse import unquote
 from urllib.parse import urlencode
 from urllib.parse import urlparse
@@ -18,8 +18,7 @@ from cryptojwt.jws.exception import NoSuitableSigningKeys
 from cryptojwt.utils import as_bytes
 from cryptojwt.utils import b64e
 
-from idpyoidc import claims
-from idpyoidc import metadata
+from idpyoidc import alg_info
 from idpyoidc.exception import ImproperlyConfigured
 from idpyoidc.exception import ParameterError
 from idpyoidc.exception import URIError
@@ -50,7 +49,6 @@ from idpyoidc.server.user_authn.authn_context import pick_auth
 from idpyoidc.time_util import utc_time_sans_frac
 from idpyoidc.util import importer
 from idpyoidc.util import rndstr
-
 
 ParsedURI = TypeVar('ParsedURI', ParseResult, SplitResult)
 
@@ -283,10 +281,10 @@ def get_uri(context,
 
 
 def authn_args_gather(
-    request: Union[AuthorizationRequest, dict],
-    authn_class_ref: str,
-    cinfo: dict,
-    **kwargs,
+        request: Union[AuthorizationRequest, dict],
+        authn_class_ref: str,
+        cinfo: dict,
+        **kwargs,
 ):
     """
     Gather information to be used by the authentication method
@@ -341,6 +339,7 @@ def check_unknown_scopes_policy(request_info, client_id, context):
         logger.warning(f"{client_id} requested unauthorized scopes: {diff}")
         raise UnAuthorizedClientScope()
 
+
 class Authorization(Endpoint):
     request_cls = oauth2.AuthorizationRequest
     response_cls = oauth2.AuthorizationResponse
@@ -354,13 +353,13 @@ class Authorization(Endpoint):
 
     _supports = {
         "claims_parameter_supported": True,
-        "request_parameter_supported": True,
-        "request_uri_parameter_supported": True,
+        "request_parameter_supported": None,
+        "request_uri_parameter_supported": None,
         "response_types_supported": ["code"],
         "response_modes_supported": ["query", "fragment", "form_post"],
-        "request_object_signing_alg_values_supported": metadata.get_signing_algs(),
-        "request_object_encryption_alg_values_supported": metadata.get_encryption_algs(),
-        "request_object_encryption_enc_values_supported": metadata.get_encryption_encs(),
+        "request_object_signing_alg_values_supported": alg_info.get_signing_algs(),
+        "request_object_encryption_alg_values_supported": alg_info.get_encryption_algs(),
+        "request_object_encryption_enc_values_supported": alg_info.get_encryption_encs(),
         # "grant_types_supported": ["authorization_code", "implicit"],
         "code_challenge_methods_supported": ["S256"],
         "scopes_supported": [],
@@ -380,7 +379,7 @@ class Authorization(Endpoint):
     def filter_request(self, context, req):
         return req
 
-    def extra_response_args(self, aresp):
+    def extra_response_args(self, aresp, **kwargs):
         return aresp
 
     def authentication_error_response(self, request, error, error_description, **kwargs):
@@ -530,7 +529,6 @@ class Authorization(Endpoint):
         else:
             request["redirect_uri"] = redirect_uri
 
-
         resource_indicators_config = None
         # check if enable_resource_indicators is enabled and resource parameter exists
         if request.get("resource") is not None and context.conf.endpoint.get("authorization").get("kwargs").get("enable_resource_indicators"):
@@ -562,12 +560,10 @@ class Authorization(Endpoint):
                               ]
                           }
                       }
-
         if resource_indicators_config is not None:
             if "policy" not in resource_indicators_config:
                 policy = {"policy": {"function": validate_resource_indicators_policy}}
                 resource_indicators_config.update(policy)
-           
             request = self._enforce_resource_indicators_policy(request, resource_indicators_config)
             
             if "error" in request:
@@ -677,13 +673,13 @@ class Authorization(Endpoint):
             return identity
 
     def setup_auth(
-        self,
-        request: Optional[Union[Message, dict]],
-        redirect_uri: str,
-        cinfo: dict,
-        cookie: List[dict] = None,
-        acr: str = None,
-        **kwargs,
+            self,
+            request: Optional[Union[Message, dict]],
+            redirect_uri: str,
+            cinfo: dict,
+            cookie: List[dict] = None,
+            acr: str = None,
+            **kwargs,
     ) -> dict:
         """
 
@@ -807,12 +803,12 @@ class Authorization(Endpoint):
         return ""
 
     def response_mode(
-        self,
-        request: Union[dict, AuthorizationRequest],
-        response_args: Optional[Union[dict, AuthorizationResponse]] = None,
-        return_uri: Optional[str] = "",
-        fragment_enc: Optional[bool] = None,
-        **kwargs,
+            self,
+            request: Union[dict, AuthorizationRequest],
+            response_args: Optional[Union[dict, AuthorizationResponse]] = None,
+            return_uri: Optional[str] = "",
+            fragment_enc: Optional[bool] = None,
+            **kwargs,
     ) -> dict:
         resp_mode = request["response_mode"]
         if resp_mode == "form_post":
@@ -902,7 +898,12 @@ class Authorization(Endpoint):
                 list(set(scope + resource_scopes)), _sinfo["client_id"]
             )
 
-            rtype = set(request["response_type"][:])
+            if isinstance(request["response_type"], list):
+                rtype = set(request["response_type"][:])
+            else:  # assume it's a string
+                rtype = set()
+                rtype.add(request["response_type"])
+
             handled_response_type = []
 
             fragment_enc = True
@@ -919,6 +920,25 @@ class Authorization(Endpoint):
                     error=request["error"],
                     error_description=request["error_description"],
                 )
+
+            _aud = request.get("audience", None)
+            if _aud:
+                if isinstance(_aud, list):
+                    _aud_arg = {"aud": _aud}
+                else:
+                    _aud_arg = {"aud": [_aud]}
+            else:
+                _aud_arg = {}
+
+            _aud = request.get("audience", None)
+            if _aud:
+                if isinstance(_aud, list):
+                    _aud_arg = {"aud": _aud}
+                else:
+                    _aud_arg = {"aud": [_aud]}
+            else:
+                _aud_arg = {}
+
             if "code" in rtype:
                 _code = self.mint_token(
                     token_class="authorization_code",
@@ -935,6 +955,7 @@ class Authorization(Endpoint):
                     token_class="access_token",
                     grant=grant,
                     session_id=_sinfo["branch_id"],
+                    **_aud_arg
                 )
                 aresp["access_token"] = _access_token.value
                 aresp["token_type"] = "Bearer"
@@ -953,6 +974,7 @@ class Authorization(Endpoint):
                 elif {"id_token", "token"}.issubset(rtype):
                     kwargs = {"access_token": _access_token.value}
 
+                kwargs.update(_aud_arg)
                 if rtype == {"id_token"}:
                     kwargs["as_if"] = "userinfo"
 
@@ -986,7 +1008,7 @@ class Authorization(Endpoint):
                 )
                 return {"response_args": resp, "fragment_enc": fragment_enc}
 
-        aresp = self.extra_response_args(aresp)
+        aresp = self.extra_response_args(aresp, client_id=request["client_id"])
 
         return {"response_args": aresp, "fragment_enc": fragment_enc}
 
@@ -1130,10 +1152,10 @@ class Authorization(Endpoint):
         return kwargs
 
     def process_request(
-        self,
-        request: Optional[Union[Message, dict]] = None,
-        http_info: Optional[dict] = None,
-        **kwargs,
+            self,
+            request: Optional[Union[Message, dict]] = None,
+            http_info: Optional[dict] = None,
+            **kwargs,
     ):
         """The AuthorizationRequest endpoint
 
@@ -1196,6 +1218,7 @@ class Authorization(Endpoint):
 
 
 class AllowedAlgorithms:
+
     def __init__(self, algorithm_parameters):
         self.algorithm_parameters = algorithm_parameters
 
