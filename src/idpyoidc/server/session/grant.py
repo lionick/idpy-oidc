@@ -573,8 +573,7 @@ class ExchangeGrant(Grant):
 
         if scope is None:
             scope = self.scope
-
-        payload = {"scope": scope, "aud": self.resources, "jti": uuid1().hex}
+        payload["scope"] = scope
 
         if extra_payload:
             payload.update(extra_payload)

@@ -322,6 +322,12 @@ class TokenExchangeHelper(TokenEndpointHelper):
         resources = request.get("resource", None)
         if resources:
             _token_args = {"resources": resources}
+        elif _token_args is None:
+            # No validated resource indicator and no audience policy set
+            # one - RFC 9068 Section 3 MUST: fall back to a default
+            # resource indicator (the exchanging client itself) rather
+            # than omitting aud.
+            _token_args = {"resources": [request["client_id"]]}
 
         try:
             new_token = self._mint_token(

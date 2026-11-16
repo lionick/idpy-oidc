@@ -250,8 +250,13 @@ class TestEndpoint(object):
     )
     def test_token_exchange1(self, token):
         """
-        Test that token exchange requests work correctly with only the required parameters
-        present
+        Config: client_1's token is exchanged by client_2 (a cross-client
+        exchange), no "resource" or "audience" parameter sent, no
+        resource_indicators or audience_policies configuration anywhere.
+        Expected: request succeeds, and when the issued token is an
+        access_token its aud defaults to the exchanging client's own
+        client_id (client_2), not left empty and not inherited from
+        client_1.
         """
         areq = AUTH_REQ.copy()
         if list(token.keys())[0] == "refresh_token":
@@ -286,6 +291,10 @@ class TestEndpoint(object):
             "expires_in",
             "issued_token_type",
         }
+        access_token = AuthorizationResponse().from_jwt(
+            _resp["response_args"]["access_token"], self.keyjar, sender=""
+        )
+        assert access_token["aud"] == ["client_2"]
 
     @pytest.mark.parametrize(
         "token",
