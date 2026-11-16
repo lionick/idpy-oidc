@@ -102,8 +102,23 @@ class ClientCredentials(TokenEndpointHelper):
         if "error" in req:
             return self.error_cls(error=req["error"], error_description=req["error_description"])
         resources = req.get("resource", None)
-        if resources:
+        if resources and (
+            resource_indicators_config is not None
+            or self.endpoint.kwargs.get("enable_audience_policies")
+        ):
+            # Trust "resource" into the token's aud only if something
+            # actually had the chance to validate/reject it - either
+            # resource_indicators above, or an audience policy (which may
+            # read it straight off the request, like this one, rather than
+            # the "audience" argument it was also given). With neither
+            # enabled, an unvalidated client-supplied "resource" must not
+            # silently become the token's audience.
             token_args = {"resources": resources}
+        elif token_args is None:
+            # No validated resource indicator and no audience policy set one -
+            # RFC 9068 Section 3 MUST: fall back to a default resource
+            # indicator (the client itself) rather than omitting aud.
+            token_args = {"resources": [client_id]}
         _grant = _session_info["grant"]
 
         token_type = "Bearer"

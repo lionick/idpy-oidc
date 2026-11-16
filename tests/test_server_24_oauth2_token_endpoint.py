@@ -968,8 +968,13 @@ class TestClientCredentialsFlow(object):
             "scope",
             "expires_in",
         }
-        
-    @pytest.mark.parametrize("resource", ["client2", ["client2", "client3"]])    
+        # RFC 9068 Section 3 MUST: no resource indicator in play -> default aud.
+        access_token = AuthorizationResponse().from_jwt(
+            response["response_args"]["access_token"], self.keyjar, sender=""
+        )
+        assert access_token["aud"] == ["client_1"]
+
+    @pytest.mark.parametrize("resource", ["client2", ["client2", "client3"]])
     def test_client_credentials_resource_indicator_disabled(self, resource):
         request = CCAccessTokenRequest(
             client_id="client_1",
@@ -987,8 +992,32 @@ class TestClientCredentialsFlow(object):
             "scope",
             "expires_in",
         }
+        # Use cases 2/7: resource indicators disabled, so the client-supplied
+        # "resource" is ignored entirely (never leaked into aud unvalidated),
+        # but RFC 9068 Section 3 still MUSTs a default aud.
+        access_token = AuthorizationResponse().from_jwt(
+            response["response_args"]["access_token"], self.keyjar, sender=""
+        )
+        assert access_token["aud"] == ["client_1"]
 
-    def test_client_credentials_resource_indicator_enabled(self):    
+    def test_client_credentials_resource_indicator_enabled_no_resource_param(self):
+        """Use case 1: enabled, but the client sends no "resource" at all."""
+        self.token_endpoint.kwargs["enable_resource_indicators"] = True
+        request = CCAccessTokenRequest(
+            client_id="client_1",
+            client_secret="hemligt",
+            grant_type="client_credentials",
+            scope="whatever",
+        )
+        request = self.token_endpoint.parse_request(request)
+        response = self.token_endpoint.process_request(request)
+        assert set(response.keys()) == {"response_args", "cookie", "http_headers"}
+        access_token = AuthorizationResponse().from_jwt(
+            response["response_args"]["access_token"], self.keyjar, sender=""
+        )
+        assert access_token["aud"] == ["client_1"]
+
+    def test_client_credentials_resource_indicator_enabled(self):
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         request = CCAccessTokenRequest(
             client_id="client_1",
@@ -1006,18 +1035,26 @@ class TestClientCredentialsFlow(object):
             "scope",
             "expires_in",
         }
-    
-    @pytest.mark.parametrize("resource", ["client2", ["client2", "client3"],["client1", "client2"],["client2", "client4"]])  
+
+    @pytest.mark.parametrize(
+        "resource",
+        ["client_2", ["client_2", "client_3"], ["client_2", "client_3", "client_4"]],
+    )
     def test_client_credentials_resource_indicator_enabled_client_conf(self, resource):
+        """
+        Use cases 3 and 11: requesting one or more valid, non-self
+        resources returns exactly those in aud - never client_1, since
+        client_1 was never itself requested.
+        """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         self.context.cdb["client_1"]["resource_indicators"] = {
             "policy": {
                 "function": validate_resource_indicators_policy,
-                "kwargs": {"resource_servers_per_client": ["client_2"]},
+                "kwargs": {"resource_servers_per_client": ["client_2", "client_3", "client_4"]},
             },
         }
-        if "client_4" in resource:
-             self.context.cdb["client_4"] = {
+        for extra in ("client_3", "client_4"):
+            self.context.cdb.setdefault(extra, {
                 "client_secret": "hemligt",
                 "redirect_uris": [("https://example.com/cb", None)],
                 "client_salt": "salted",
@@ -1025,14 +1062,15 @@ class TestClientCredentialsFlow(object):
                 "response_types": ["code", "token", "code id_token", "id_token"],
                 "allowed_scopes": ["openid", "profile", "email", "address", "phone", "offline_access"],
                 "grant_types_supported": ["client_credentials", "password"],
-            }
+            })
         request = CCAccessTokenRequest(
             client_id="client_1",
             client_secret="hemligt",
             grant_type="client_credentials",
             scope="whatever",
-            resource=["client_2"]
+            resource=resource,
         )
+        requested = resource if isinstance(resource, list) else [resource]
         request = self.token_endpoint.parse_request(request)
         response = self.token_endpoint.process_request(request)
 
@@ -1043,20 +1081,59 @@ class TestClientCredentialsFlow(object):
             "scope",
             "expires_in",
         }
-        
+
         # Access Token
         access_token = AuthorizationResponse().from_jwt(
             response["response_args"]["access_token"], self.keyjar, sender=""
         )
 
         assert "aud" in access_token
-        assert "client_2" in access_token["aud"]
-        if "client_1" in resource:
-            assert "client_1" in access_token["aud"]
-        if "client_4" in resource:
-            assert "client_4" in access_token["aud"]  
-    
-    @pytest.mark.parametrize("resource", ["client4", ["client3", "client4"]])   
+        assert set(access_token["aud"]) == set(requested)
+        assert "client_1" not in access_token["aud"]
+
+    def test_client_credentials_resource_indicator_enabled_no_client_conf_itself(self):
+        """Use case 4: no resource_indicators configuration at all, client
+        requests only itself - always permitted, by convenience."""
+        self.token_endpoint.kwargs["enable_resource_indicators"] = True
+        request = CCAccessTokenRequest(
+            client_id="client_1",
+            client_secret="hemligt",
+            grant_type="client_credentials",
+            scope="whatever",
+            resource=["client_1"],
+        )
+        request = self.token_endpoint.parse_request(request)
+        response = self.token_endpoint.process_request(request)
+        access_token = AuthorizationResponse().from_jwt(
+            response["response_args"]["access_token"], self.keyjar, sender=""
+        )
+        assert access_token["aud"] == ["client_1"]
+
+    def test_client_credentials_resource_indicator_enabled_no_client_conf_itself_and_unknown(self):
+        """Use case 10: no resource_indicators configuration at all, client
+        requests itself plus an unconfigured resource - rejected."""
+        self.token_endpoint.kwargs["enable_resource_indicators"] = True
+        request = CCAccessTokenRequest(
+            client_id="client_1",
+            client_secret="hemligt",
+            grant_type="client_credentials",
+            scope="whatever",
+            resource=["client_1", "client_3"],
+        )
+        client_id = request["client_id"]
+        request = self.token_endpoint.parse_request(request)
+        response = self.token_endpoint.process_request(request)
+        assert response["error"] == "invalid_target"
+        assert response["error_description"] == f"One or more invalid resources requested by client {client_id}"
+
+    @pytest.mark.parametrize(
+        "resource",
+        [
+            "client4",
+            ["client3", "client4"],
+            ["client_2", "client_3"],  # use case 8: one valid, one unknown
+        ],
+    )
     def test_client_credentials_resource_indicator_enabled_client_conf_unknown_resource(self, resource):
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         self.context.cdb["client_1"]["resource_indicators"] = {
