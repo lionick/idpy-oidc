@@ -953,6 +953,12 @@ class TestClientCredentialsFlow(object):
         self.keyjar = server.keyjar
 
     def test_client_credentials(self):
+        """
+        Config: enable_resource_indicators unset (disabled), no per-client
+        resource_indicators configuration, no "resource" parameter sent.
+        Expected: token issued, aud defaults to the requesting client's
+        own client_id.
+        """
         request = CCAccessTokenRequest(
             client_id="client_1",
             client_secret="hemligt",
@@ -968,7 +974,6 @@ class TestClientCredentialsFlow(object):
             "scope",
             "expires_in",
         }
-        # RFC 9068 Section 3 MUST: no resource indicator in play -> default aud.
         access_token = AuthorizationResponse().from_jwt(
             response["response_args"]["access_token"], self.keyjar, sender=""
         )
@@ -976,6 +981,14 @@ class TestClientCredentialsFlow(object):
 
     @pytest.mark.parametrize("resource", ["client_2", ["client_2", "client_3"]])
     def test_client_credentials_resource_indicator_disabled(self, resource):
+        """
+        Config: enable_resource_indicators unset (disabled), no per-client
+        resource_indicators configuration, client sends a "resource"
+        parameter (one or several values) anyway.
+        Expected: token issued, the "resource" parameter is ignored
+        entirely (never validated, never echoed into aud), aud defaults
+        to the requesting client's own client_id.
+        """
         request = CCAccessTokenRequest(
             client_id="client_1",
             client_secret="hemligt",
@@ -992,16 +1005,18 @@ class TestClientCredentialsFlow(object):
             "scope",
             "expires_in",
         }
-        # Use cases 2/7: resource indicators disabled, so the client-supplied
-        # "resource" is ignored entirely (never leaked into aud unvalidated),
-        # but RFC 9068 Section 3 still MUSTs a default aud.
         access_token = AuthorizationResponse().from_jwt(
             response["response_args"]["access_token"], self.keyjar, sender=""
         )
         assert access_token["aud"] == ["client_1"]
 
     def test_client_credentials_resource_indicator_enabled_no_resource_param(self):
-        """Use case 1: enabled, but the client sends no "resource" at all."""
+        """
+        Config: enable_resource_indicators=True, no per-client
+        resource_indicators configuration, no "resource" parameter sent.
+        Expected: token issued, aud defaults to the requesting client's
+        own client_id.
+        """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         request = CCAccessTokenRequest(
             client_id="client_1",
@@ -1018,6 +1033,13 @@ class TestClientCredentialsFlow(object):
         assert access_token["aud"] == ["client_1"]
 
     def test_client_credentials_resource_indicator_enabled(self):
+        """
+        Config: enable_resource_indicators=True, no per-client
+        resource_indicators configuration, client requests a resource
+        other than itself ("client_2").
+        Expected: token issued successfully (this test only checks the
+        response shape, not aud).
+        """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         request = CCAccessTokenRequest(
             client_id="client_1",
@@ -1042,9 +1064,12 @@ class TestClientCredentialsFlow(object):
     )
     def test_client_credentials_resource_indicator_enabled_client_conf(self, resource):
         """
-        Use cases 3 and 11: requesting one or more valid, non-self
-        resources returns exactly those in aud - never client_1, since
-        client_1 was never itself requested.
+        Config: enable_resource_indicators=True, per-client
+        resource_indicators configured to permit client_2, client_3 and
+        client_4; client requests one or more of those (never itself).
+        Expected: token issued, aud contains exactly the requested,
+        permitted resources, and never the requesting client's own
+        client_id (it wasn't requested).
         """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         self.context.cdb["client_1"]["resource_indicators"] = {
@@ -1092,8 +1117,14 @@ class TestClientCredentialsFlow(object):
         assert "client_1" not in access_token["aud"]
 
     def test_client_credentials_resource_indicator_enabled_no_client_conf_itself(self):
-        """Use case 4: no resource_indicators configuration at all, client
-        requests only itself - always permitted, by convenience."""
+        """
+        Config: enable_resource_indicators=True, no per-client
+        resource_indicators configuration at all, client requests only
+        itself as the resource.
+        Expected: token issued, aud is the requesting client's own
+        client_id - a client may always request itself, even with no
+        explicit configuration permitting it.
+        """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         request = CCAccessTokenRequest(
             client_id="client_1",
@@ -1110,8 +1141,14 @@ class TestClientCredentialsFlow(object):
         assert access_token["aud"] == ["client_1"]
 
     def test_client_credentials_resource_indicator_enabled_no_client_conf_itself_and_unknown(self):
-        """Use case 10: no resource_indicators configuration at all, client
-        requests itself plus an unconfigured resource - rejected."""
+        """
+        Config: enable_resource_indicators=True, no per-client
+        resource_indicators configuration at all, client requests itself
+        plus another resource ("client_3") that has no configuration
+        permitting it.
+        Expected: request rejected with invalid_target - requesting
+        itself doesn't grant permission for anything else unconfigured.
+        """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         request = CCAccessTokenRequest(
             client_id="client_1",
@@ -1131,10 +1168,19 @@ class TestClientCredentialsFlow(object):
         [
             "client_4",
             ["client_3", "client_4"],
-            ["client_2", "client_3"],  # use case 8: one valid, one unknown
+            ["client_2", "client_3"],
         ],
     )
     def test_client_credentials_resource_indicator_enabled_client_conf_unknown_resource(self, resource):
+        """
+        Config: enable_resource_indicators=True, per-client
+        resource_indicators configured to permit only client_2; client
+        requests one or more resources outside that permitted set
+        (including a mix of one permitted and one not).
+        Expected: request rejected with invalid_target - any resource
+        outside the permitted set fails the whole request, even if
+        other requested resources were valid.
+        """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         self.context.cdb["client_1"]["resource_indicators"] = {
             "policy": {
@@ -1142,7 +1188,7 @@ class TestClientCredentialsFlow(object):
                 "kwargs": {"resource_servers_per_client": ["client_2"]},
             },
         }
-       
+
         request = CCAccessTokenRequest(
             client_id="client_1",
             client_secret="hemligt",
@@ -1157,8 +1203,19 @@ class TestClientCredentialsFlow(object):
         assert response["error"] == "invalid_target"
         assert response["error_description"] == f"One or more invalid resources requested by client {client_id}"
 
-    @pytest.mark.parametrize("resource", ["client_1", ["client_1", "client_3"]])   
+    @pytest.mark.parametrize("resource", ["client_1", ["client_1", "client_3"]])
     def test_client_credentials_resource_indicator_enabled_client_conf_itself_resource(self, resource):
+        """
+        Config: enable_resource_indicators=True, per-client
+        resource_indicators configured to permit only client_2 (the
+        requesting client's own id, client_1, is not listed); client
+        requests itself alone, or itself plus another unconfigured
+        resource ("client_3").
+        Expected: requesting itself alone succeeds, aud contains the
+        client's own client_id - self-requests are always permitted
+        regardless of configuration. Requesting itself together with an
+        unconfigured resource is rejected with invalid_target.
+        """
         self.token_endpoint.kwargs["enable_resource_indicators"] = True
         self.context.cdb["client_1"]["resource_indicators"] = {
             "policy": {
