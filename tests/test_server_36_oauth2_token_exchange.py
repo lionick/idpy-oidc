@@ -681,7 +681,7 @@ class TestEndpoint(object):
         session_id = self._create_session(areq)
         grant = self.context.authz(session_id, areq)
         code = self._mint_code(grant, areq["client_id"])
-        
+
         _token_request = TOKEN_REQ_DICT.copy()
         _token_request["code"] = code.value
         _req = self.endpoint.parse_request(_token_request)
@@ -704,7 +704,7 @@ class TestEndpoint(object):
         assert set(_resp.keys()) == {"error", "error_description"}
         assert _resp["error"] == "invalid_target"
         assert _resp["error_description"] == f"One or more invalid resources requested by client {client_id}"
-    
+
     @pytest.mark.parametrize("resource", ["client_2", ["client_2", "client_3"]])
     def test_token_exchange_req_resource(self, resource):
         """
@@ -720,20 +720,20 @@ class TestEndpoint(object):
             "urn:ietf:params:oauth:grant-type:token-exchange"
         ].config
         areq = AUTH_REQ.copy()
-        
+
         areq["resource"] = resource
         session_id = self._create_session(areq)
         grant = self.context.authz(session_id, areq)
         code = self._mint_code(grant, areq["client_id"])
-        
+
         _token_request = TOKEN_REQ_DICT.copy()
         _token_request["code"] = code.value
         _req = self.endpoint.parse_request(_token_request)
         client_id = _req["client_id"]
         _resp = self.endpoint.process_request(request=_req)
-        
+
         _token_value = _resp["response_args"]["access_token"]
-        
+
         token_exchange_req = TokenExchangeRequest(
             grant_type="urn:ietf:params:oauth:grant-type:token-exchange",
             subject_token=_token_value,
@@ -744,7 +744,7 @@ class TestEndpoint(object):
         _req = self.endpoint.parse_request(
             token_exchange_req,
             {"headers": {"authorization": "Basic {}".format("Y2xpZW50XzE6aGVtbGlndA==")}},
-        )    
+        )
         _resp = self.endpoint.process_request(request=_req)
         if resource == "client_2":
             assert set(_resp["response_args"].keys()) == {
@@ -756,15 +756,15 @@ class TestEndpoint(object):
             }
             msg = self.endpoint.do_response(request=_req, **_resp)
             assert isinstance(msg, dict)
-            
+
             id_token = AuthorizationResponse().from_jwt(
                 _resp["response_args"]["access_token"], self.keyjar, sender=""
             )
-            
+
             assert "client_2" in id_token["aud"]
         else:
             assert _resp["error"] == "invalid_target"
-            assert _resp["error_description"] == f"One or more invalid resources requested by client {client_id}" 
+            assert _resp["error_description"] == f"One or more invalid resources requested by client {client_id}"
 
 
     def test_refresh_token_audience(self):
