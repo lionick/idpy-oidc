@@ -974,7 +974,7 @@ class TestClientCredentialsFlow(object):
         )
         assert access_token["aud"] == ["client_1"]
 
-    @pytest.mark.parametrize("resource", ["client2", ["client2", "client3"]])
+    @pytest.mark.parametrize("resource", ["client_2", ["client_2", "client_3"]])
     def test_client_credentials_resource_indicator_disabled(self, resource):
         request = CCAccessTokenRequest(
             client_id="client_1",
@@ -1129,8 +1129,8 @@ class TestClientCredentialsFlow(object):
     @pytest.mark.parametrize(
         "resource",
         [
-            "client4",
-            ["client3", "client4"],
+            "client_4",
+            ["client_3", "client_4"],
             ["client_2", "client_3"],  # use case 8: one valid, one unknown
         ],
     )
