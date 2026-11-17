@@ -1017,66 +1017,187 @@ idpyoidc\.server\.configure module
     :show-inheritance:
 
 
-==============
+====================
 Resource Indicators
-==============
-There are two possible ways to configure Resource Indicators in OIDC-OP, globally and per-client.
-For the first case the configuration is passed in the Authorization or Access Token endpoint arguments throught the
-`resource_indicators` dictionary.
+====================
 
-If present, the resource indicators configuration should contain a `policy` dictionary
-that defines the behaviour of the specific endpoint. The policy
-is mapped to a dictionary with the keys `callable` (mandatory), which must be a
-python callable or a string that represents the path to a python callable, and
-`kwargs` (optional), which must be a dict of key-value arguments that will be
-passed to the callable.
+There are two ways to configure resource indicators: per-endpoint (the
+default for every client) and per-client (overriding that default for
+one client). They apply to the authorization, token
+(``authorization_code``, ``client_credentials``, ``token_exchange``) and
+introspection endpoints.
 
-The resource indicators configuration may also contain a `resource_servers_per_client`
-dictionary that defines a mapping between oidc-op registered clients with key the equivalent `client id` and resources to whom this client
-is eligible to request access.
+---------------------------
+enable_resource_indicators
+---------------------------
 
-    "resource_indicators":{
-      "policy": {
-          "callable": validate_authorization_resource_indicators_policy,
-          "kwargs": {
-            "resource_servers_per_client": {
-              "CLIENT_1": ["RESOURCE_1"],
-              "CLIENT_2": ["RESOURCE_1", "RESOURCE_2"]
-            },
-          },
-        },
-      },
-    }
+Each endpoint's ``kwargs`` accepts an ``enable_resource_indicators``
+boolean, default ``False``. Without it, any ``resource`` parameter a
+client sends is ignored outright - never validated, never reflected in
+the issued token - and the token's ``aud`` falls back to the default
+described below, exactly as if the client had sent no ``resource`` at
+all.
 
-For the per-client configuration a similar configuration scheme should be present in the client's
-metadata under the `resource_indicators` key with slight difference. The `policy` mapping should be set a value for a 
-key `authorization_code` or `access_token` in order to indicate the endpoint that this resource indicators policy is reffered to.
-In addition, the `resource_servers_per_client` value is a list of the permitted resources.
+-------------------
+resource_indicators
+-------------------
 
-For example::
+The endpoint-level default policy, used for any client with no
+``resource_indicators`` entry of its own. ``policy`` maps to a dict with
+``function`` (mandatory - a callable, or an importable dotted-path
+string) and ``kwargs`` (optional)::
 
-    "resource_indicators":{
-        "authorization_code": {
-          "policy": {
-            "callable": validate_authorization_resource_indicators_policy,
+    "resource_indicators": {
+        "policy": {
+            "function": validate_resource_indicators_policy,
             "kwargs": {
-              "resource_servers_per_client": ["RESOURCE_1"],
+                "resource_servers_per_client": {
+                    "CLIENT_1": ["RESOURCE_1"],
+                    "CLIENT_2": ["RESOURCE_1", "RESOURCE_2"],
+                },
             },
-          },
-       },
-      },
+        },
     }
 
-The policy callable accepts a specific argument list and must return the altered token
-request or raise an exception.
+``resource_servers_per_client`` is either a flat list of resource
+identifiers valid for every client, or a ``{client_id: [resource, ...]}``
+mapping for per-client restriction. A client may always additionally
+request itself as a resource, even without an explicit entry. If any
+requested resource falls outside the permitted set, the entire request
+is rejected with ``invalid_target`` - never narrowed to the valid subset.
 
-For example::
+--------------------
+Per-client override
+--------------------
+
+A client database entry may carry its own ``resource_indicators``,
+overriding the endpoint-level default for that client only. It takes a
+``policy`` dict directly, the same shape as the endpoint-level default
+above::
+
+    endpoint_context.cdb["client_1"]["resource_indicators"] = {
+        "policy": {
+            "function": validate_resource_indicators_policy,
+            "kwargs": {"resource_servers_per_client": ["RESOURCE_1"]},
+        },
+    }
+
+--------------------
+The policy function
+--------------------
+
+A policy function is called as ``fn(request, context, **kwargs)``:
+
+- ``request`` - the parsed token or authorization request (a ``Message``
+  or dict), including whatever the client sent (``client_id``,
+  ``resource``, ``scope``, ...). The function may read it, and may
+  mutate it in place - the engine uses this ``request`` object
+  afterwards, so changes (e.g. narrowing ``request["resource"]`` or
+  ``request["scope"]``) take effect.
+- ``context`` - the endpoint's ``EndpointContext``, giving access to
+  ``context.cdb`` (the client database) and the rest of the server's
+  runtime state.
+- ``**kwargs`` - whatever is in this policy's own ``kwargs`` dict from
+  configuration (``resource_servers_per_client`` above, or anything
+  else a custom function declares and expects to be configured with).
+
+It must return either the (possibly modified) ``request`` to let
+processing continue normally, or an error response
+(``TokenErrorResponse``, or ``AuthorizationErrorResponse`` at the
+authorization endpoint) to abort the request with that error::
 
     def validate_resource_indicators_policy(request, context, **kwargs):
         if some_condition in request:
-          return TokenErrorResponse(
-                error="invalid_request", error_description="Some error occured"
+            return TokenErrorResponse(
+                error="invalid_target", error_description="Some error occurred"
             )
-
         return request
+
+-----------------
+Default audience
+-----------------
+
+Every issued access token gets an ``aud`` claim regardless of
+``enable_resource_indicators``. When the client doesn't request a
+resource, or resource indicators aren't enabled for that request,
+``aud`` defaults to the requesting client's own ``client_id`` - it is
+never left empty (RFC 9068 Section 3 requires a default resource
+indicator, not just permits one). A client-supplied ``resource`` is
+also never trusted into ``aud`` unless validated by this policy.
+
+
+==================
+Audience Policies
+==================
+
+A second hook, run after resource-indicator validation and immediately
+before a token is minted, for computing or restricting the final
+``aud`` beyond what resource indicators alone determine.
+
+-------------------------
+enable_audience_policies
+-------------------------
+
+Same pattern: an endpoint's ``kwargs`` needs
+``enable_audience_policies: True`` or ``audience_policies`` is never
+consulted.
+
+------------------
+audience_policies
+------------------
+
+A mapping from ``client_id`` to a list of policy specs, with ``""`` as
+the default for any client without an entry of its own::
+
+    "audience_policies": {
+        "client_1": [{"function": my_audience_policy, "kwargs": {...}}],
+        "": [{"function": default_audience_policy, "kwargs": {...}}],
+    }
+
+----------------------------
+The audience-policy function
+----------------------------
+
+A policy function is called as
+``fn(request, context, client_id, client_info, audience, grant, **kwargs)``:
+
+- ``request`` - the parsed token or authorization request. May be read and
+  mutated in place, same as for a resource-indicators policy function.
+- ``context`` - the endpoint's ``EndpointContext``.
+- ``client_id`` - the requesting client's id (also present in ``request``,
+  passed separately for convenience).
+- ``client_info`` - that client's entry in ``context.cdb``.
+- ``audience`` - read-only input: the intended audience of the token so
+  far. Contains ``request.get("resource")`` (or whatever
+  ``resource_indicators`` narrowed it to, if that ran first) at the
+  authorization and client_credentials endpoints; the existing grant's or
+  token's own ``resources`` at the refresh and introspection endpoints,
+  since ``RefreshAccessTokenRequest``/``TokenIntrospectionRequest`` have no
+  ``resource`` field to read in the first place. Reassigning or mutating it
+  has no effect - to change the audience, write to ``request`` or ``grant``
+  instead, as in the examples below.
+- ``grant`` - the session grant the token is being minted from.
+- ``**kwargs`` - this policy's own ``kwargs`` from configuration.
+
+**Unlike a resource-indicators policy function, the return value is
+ignored.** To abort the request, set ``request["error"]`` and
+``request["error_description"]`` directly; anything else (returning
+``None``, returning the request, returning nothing) just lets processing
+continue::
+
+    def require_resource_present(request, context, client_id, client_info, audience, grant, **kwargs):
+        if not request.get("resource"):
+            request["error"] = "audience_policy_error"
+            request["error_description"] = "No resource in the request"
+        # no explicit return - continuing is the default when no error is set
+
+That one only restricts. A function can just as well compute/extend the
+audience instead, by mutating ``grant.resources`` in place - this one adds
+the client's own id to whatever resources were already there::
+
+    def add_self_as_audience(request, context, client_id, client_info, audience, grant, **kwargs):
+        resources = grant.resources or []
+        if client_id not in resources:
+            resources.append(client_id)
+        grant.resources = resources
 

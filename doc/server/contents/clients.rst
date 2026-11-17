@@ -171,6 +171,46 @@ E.g.::
                 id_token: True, # Map the requested scopes to claims and add them to the id token
     }
 
+-------------------
+resource_indicators
+-------------------
+
+Overrides, for this client only, the endpoint-level ``resource_indicators``
+policy described in the server configuration documentation. It takes a
+``policy`` dict directly - the same shape used for the endpoint-level
+default::
+
+    endpoint_context.cdb["client_1"]["resource_indicators"] = {
+        "policy": {
+            "function": validate_resource_indicators_policy,
+            "kwargs": {"resource_servers_per_client": ["RESOURCE_1"]},
+        },
+    }
+
+This entry alone has no effect: it is only consulted once resource
+indicators are turned on for the endpoint in question, which is a
+separate, server-wide setting - not something configured per client, and
+not something this client (or its administrator) sets. The deployment
+operator enables it once, in the OP's own endpoint configuration
+(``enable_resource_indicators``, under that endpoint's ``kwargs`` - see
+the server configuration documentation)::
+
+    "endpoint": {
+        "token": {
+            "path": "token",
+            "class": Token,
+            "kwargs": {
+                "enable_resource_indicators": True,
+            },
+        }
+    }
+
+If this client requests no resource, or resource indicators aren't
+enabled for the endpoint, the issued access token's ``aud`` still
+defaults to this client's own ``client_id`` - this entry only changes
+what the client may additionally be issued a token for, once resource
+indicators are on.
+
 -----------------
 token_usage_rules
 -----------------
